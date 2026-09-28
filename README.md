@@ -1,6 +1,6 @@
 # KKI-Kelompok-9
 
-## LFSR and Sistem Cipher 
+## LFSR and Stream Cipher 
 
 **Anggota Kelompok:**
 1. Chelsea Christofera Antonioli Purnomo 25/558145/PA/23462  
