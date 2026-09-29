@@ -690,11 +690,10 @@ $('dec-run').addEventListener('click', () => {
 // Nilai "expected" dihitung terpisah dari fungsi di atas, jadi PASS berarti
 // implementasi cocok dengan hitungan independen. Input tiap test ditulis tetap,
 // jadi tiap kartu bisa dijalankan sendiri tanpa urutan.
-const SC = { n:8, seedStr:'11001010', taps:[5,4,3,1], wrongSeed:'11001011' };
-const T_CIPHER = '1bfe71b629', T_PLAIN = 'HELLO', T_KNOWN = 'H';
+const SC = { n:8, seedStr:'11001010', taps:[5,4,3,1] };
+const T_CIPHER = '20da539e1f', T_PLAIN = 'sandy', T_KNOWN = 's';
 
 const esc = str => String(str).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-const printable = t => Array.from(t).map(ch => { const c = ch.charCodeAt(0); return (c >= 32 && c < 127) ? ch : '·'; }).join('');
 const scSeed = () => SC.seedStr.split('').map(Number);
 const decryptWith = (seed, hex) => {
   const cb = hexToBits(hex);
@@ -704,7 +703,7 @@ const decryptWith = (seed, hex) => {
 const CASES = [
   { title:'Enkripsi standar', mode:'Encryption',
     desc:'Menguji plaintext XOR keystream menjadi ciphertext hex.',
-    inLabel:'Plaintext', input:T_PLAIN, expected:'1bfe71b629',
+    inLabel:'Plaintext', input:T_PLAIN, expected:'20da539e1f',
     run(){
       const p = textToBits(T_PLAIN);
       const ks = lfsrGenerate(scSeed(), SC.taps, p.length).bits;
@@ -714,21 +713,19 @@ const CASES = [
     } },
 
   { title:'Dekripsi standar', mode:'Decryption',
-    desc:'Menguji ciphertext XOR keystream yang sama kembali menjadi plaintext, dan kunci salah gagal.',
-    inLabel:'Ciphertext (hex)', input:T_CIPHER, expected:'HELLO',
+    desc:'Menguji ciphertext XOR keystream yang sama kembali menjadi plaintext.',
+    inLabel:'Ciphertext (hex)', input:T_CIPHER, expected:'sandy',
     run(){
       const cb = hexToBits(T_CIPHER);
       const ks = lfsrGenerate(scSeed(), SC.taps, cb.length).bits;
       const plain = decryptWith(scSeed(), T_CIPHER);
-      const wrong = decryptWith(SC.wrongSeed.split('').map(Number), T_CIPHER);
       return { actual: plain,
-        proc:[['Keystream', groupBits(ks, 48)],
-              [`Seed salah ${SC.wrongSeed} (beda 1 bit)`, printable(wrong) + (wrong === plain ? ' (terbaca!)' : ' (bukan pesan asli)')]] };
+        proc:[['Keystream', groupBits(ks, 48)], ['Ciphertext (bit)', groupBits(cb, 48)], ['Plaintext (bit)', groupBits(xorBits(cb, ks), 48)]] };
     } },
 
   { title:'Serangan known-plaintext', mode:'Attack',
     desc:'Dari ciphertext dan satu huruf yang diketahui, cari seed dengan mencoba semua kemungkinan, lalu buka seluruh pesan.',
-    inLabel:'Ciphertext + huruf diketahui', input:`${T_CIPHER} + "${T_KNOWN}"`, expected:'11001010 → HELLO',
+    inLabel:'Ciphertext + huruf diketahui', input:`${T_CIPHER} + "${T_KNOWN}"`, expected:'11001010 → sandy',
     run(){
       const kb = textToBits(T_KNOWN);
       const cb = hexToBits(T_CIPHER);
