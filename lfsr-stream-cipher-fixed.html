@@ -178,6 +178,41 @@
   .status.pass{ background:#e3f4ea; color:var(--ok); }
   .status.fail{ background:#fbe4e4; color:var(--bad); }
 
+  .scenario{ border:1px solid var(--line); border-radius:8px; padding:1rem 1.1rem; margin:1rem 0; }
+  .scenario .k{ font-size:.78rem; color:var(--muted); margin-bottom:.6rem; }
+  .scenario .m{ font-family:var(--mono); font-size:.85rem; margin-top:.7rem; }
+
+  main:has(#panel-uji-coba.active){ max-width:1120px; }
+  .summary{ min-height:1.4rem; margin:.2rem 0 1rem; font-size:.92rem; font-weight:500; }
+  .summary.ok{ color:var(--ok); }
+  .summary.bad{ color:var(--bad); }
+
+  .tc-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:1rem; align-items:start; }
+  .tc{ border:1px solid var(--line); border-radius:14px; padding:1.1rem; background:#fff; box-shadow:0 1px 2px rgba(20,20,40,.04); display:flex; flex-direction:column; gap:.6rem; }
+  .tc-top{ display:flex; justify-content:space-between; align-items:center; }
+  .tc-no{ font-family:var(--mono); font-size:.8rem; font-weight:600; color:var(--accent); }
+  .badge{ font-size:.68rem; font-weight:600; letter-spacing:.04em; padding:.15rem .6rem; border-radius:99px; background:#f0f0f0; color:var(--muted); }
+  .badge.pass{ background:#e3f4ea; color:var(--ok); }
+  .badge.fail{ background:#fbe4e4; color:var(--bad); }
+  .tc h3{ margin:.2rem 0 0; font-size:1.05rem; font-weight:600; letter-spacing:-.01em; }
+  .tc .desc{ margin:0 0 .3rem; font-size:.84rem; color:var(--muted); }
+  .tiles{ display:grid; grid-template-columns:1fr 1fr; gap:.5rem; }
+  .tile{ background:#f6f6fa; border-radius:10px; padding:.55rem .75rem; min-width:0; }
+  .tile .tl{ font-size:.66rem; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); margin-bottom:.15rem; }
+  .tile .tv{ font-family:var(--mono); font-size:.88rem; word-break:break-all; }
+  .tile .ts{ font-size:.72rem; color:var(--muted); margin-top:.1rem; font-family:var(--mono); }
+  .tile.exp{ background:#f1eeff; }
+  .tile.act.idle{ background:#fff; border:1px dashed var(--field); }
+  .tile.act.idle .tv{ color:var(--muted); font-family:var(--sans); font-size:.82rem; }
+  .tile.act.pass{ background:#eaf6ef; }
+  .tile.act.pass .tl, .tile.act.pass .tv{ color:var(--ok); }
+  .tile.act.fail{ background:#fbe9e9; }
+  .tile.act.fail .tl, .tile.act.fail .tv{ color:var(--bad); }
+  .tile.proc .tv{ font-size:.78rem; line-height:1.5; }
+  .tile.proc .pl{ color:var(--muted); font-family:var(--sans); font-size:.72rem; margin-top:.35rem; }
+  .tile.proc .pl:first-of-type{ margin-top:0; }
+  .tc button{ width:100%; margin-top:.2rem; }
+
   .defs{ display:grid; grid-template-columns:11rem 1fr; gap:.7rem 1.2rem; margin:0; font-size:.92rem; }
   .defs dt{ font-weight:500; }
   .defs dd{ margin:0; color:var(--muted); }
@@ -333,12 +368,20 @@
     <!-- uji coba -->
     <section class="panel" id="panel-uji-coba">
       <h2>Uji coba</h2>
-      <p>Tiga kasus uji dengan input dan hasil yang sudah diketahui, terpisah dari kunci di panel kiri. Program menjalankan algoritma yang sama dengan tab lain, lalu membandingkan hasilnya dengan output yang diharapkan.</p>
-      <div class="actions"><button id="run-tests">Jalankan ulang</button></div>
-      <div id="test-list"></div>
+      <p>Tiga test case dengan satu kunci tetap, jadi tidak perlu mengubah n, seed, atau taps. Tiap kartu bisa dijalankan sendiri dan hasilnya muncul setelah dijalankan. Urutannya satu alur: enkripsi, dekripsi, lalu serangan yang membongkar seed dari ciphertext yang sama.</p>
+      <div class="scenario">
+        <div class="k">Kunci tetap untuk semua test</div>
+        <div id="test-key-reg"></div>
+        <div class="m" id="test-scenario"></div>
+      </div>
+      <div class="actions">
+        <button id="run-tests">Jalankan semua</button>
+        <button class="ghost" id="reset-tests">Reset hasil</button>
+      </div>
+      <div class="summary" id="test-summary"></div>
+      <div class="tc-grid" id="test-list"></div>
     </section>
 
-    <!-- keamanan -->
     <section class="panel" id="panel-keamanan">
       <h2>Keamanan: pencarian seed</h2>
       <p>Register n bit hanya punya 2ⁿ kemungkinan seed. Penyerang yang tahu register size dan posisi tap (tapi tidak tahu seed) bisa mencoba semuanya sampai menemukan seed yang menghasilkan keystream yang sama dengan cuplikan hasil sadapan.</p>
@@ -643,51 +686,120 @@ $('dec-run').addEventListener('click', () => {
   $('dec-result').hidden = false;
 });
 
-// ---------- uji coba ----------
-const TESTS = [
-  { title:'Test A: pembangkitan keystream', kind:'keystream',
-    n:5, seed:'10110', taps:[3,1], length:15, expected:'011011101010000' },
-  { title:'Test B: enkripsi', kind:'encrypt',
-    n:8, seed:'11001010', taps:[5,4,3,1], plaintext:'GO', expected:'14f4' },
-  { title:'Test C: dekripsi', kind:'decrypt',
-    n:8, seed:'11001010', taps:[5,4,3,1], ciphertext:'14f4', expected:'GO' }
+// ---------- uji coba: 3 test case, satu kunci tetap ----------
+// Nilai "expected" dihitung terpisah dari fungsi di atas, jadi PASS berarti
+// implementasi cocok dengan hitungan independen. Input tiap test ditulis tetap,
+// jadi tiap kartu bisa dijalankan sendiri tanpa urutan.
+const SC = { n:8, seedStr:'11001010', taps:[5,4,3,1], wrongSeed:'11001011' };
+const T_CIPHER = '1bfe71b629', T_PLAIN = 'HELLO', T_KNOWN = 'H';
+
+const esc = str => String(str).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const printable = t => Array.from(t).map(ch => { const c = ch.charCodeAt(0); return (c >= 32 && c < 127) ? ch : '·'; }).join('');
+const scSeed = () => SC.seedStr.split('').map(Number);
+const decryptWith = (seed, hex) => {
+  const cb = hexToBits(hex);
+  return bitsToText(xorBits(cb, lfsrGenerate(seed, SC.taps, cb.length).bits));
+};
+
+const CASES = [
+  { title:'Enkripsi standar', mode:'Encryption',
+    desc:'Menguji plaintext XOR keystream menjadi ciphertext hex.',
+    inLabel:'Plaintext', input:T_PLAIN, expected:'1bfe71b629',
+    run(){
+      const p = textToBits(T_PLAIN);
+      const ks = lfsrGenerate(scSeed(), SC.taps, p.length).bits;
+      const c = xorBits(p, ks);
+      return { actual: bitsToHex(c),
+        proc:[['Keystream', groupBits(ks, 48)], ['Plaintext (bit)', groupBits(p, 48)], ['Ciphertext (bit)', groupBits(c, 48)]] };
+    } },
+
+  { title:'Dekripsi standar', mode:'Decryption',
+    desc:'Menguji ciphertext XOR keystream yang sama kembali menjadi plaintext, dan kunci salah gagal.',
+    inLabel:'Ciphertext (hex)', input:T_CIPHER, expected:'HELLO',
+    run(){
+      const cb = hexToBits(T_CIPHER);
+      const ks = lfsrGenerate(scSeed(), SC.taps, cb.length).bits;
+      const plain = decryptWith(scSeed(), T_CIPHER);
+      const wrong = decryptWith(SC.wrongSeed.split('').map(Number), T_CIPHER);
+      return { actual: plain,
+        proc:[['Keystream', groupBits(ks, 48)],
+              [`Seed salah ${SC.wrongSeed} (beda 1 bit)`, printable(wrong) + (wrong === plain ? ' (terbaca!)' : ' (bukan pesan asli)')]] };
+    } },
+
+  { title:'Serangan known-plaintext', mode:'Attack',
+    desc:'Dari ciphertext dan satu huruf yang diketahui, cari seed dengan mencoba semua kemungkinan, lalu buka seluruh pesan.',
+    inLabel:'Ciphertext + huruf diketahui', input:`${T_CIPHER} + "${T_KNOWN}"`, expected:'11001010 → HELLO',
+    run(){
+      const kb = textToBits(T_KNOWN);
+      const cb = hexToBits(T_CIPHER);
+      const target = xorBits(cb.slice(0, kb.length), kb);
+      const total = 2 ** SC.n, found = [];
+      for(let i = 0; i < total; i++){
+        const cand = i.toString(2).padStart(SC.n, '0').split('').map(Number);
+        if(lfsrGenerate(cand, SC.taps, target.length).bits.every((b, j) => b === target[j])) found.push(cand.join(''));
+      }
+      const msg = found.length ? decryptWith(found[0].split('').map(Number), T_CIPHER) : '-';
+      return { actual: `${found.join(', ') || 'tidak ada'} → ${msg}`,
+        proc:[['Potongan keystream', target.join('') + ' (ciphertext XOR huruf diketahui)'],
+              ['Seed dicoba', `2^${SC.n} = ${total}`],
+              ['Seed cocok', `${found.length}`]] };
+    } }
 ];
+const caseState = CASES.map(() => null);
 
-function runTests(){
-  $('test-list').innerHTML = TESTS.map(t => {
-    const seed = t.seed.split('').map(Number);
-    const keyText = `n=${t.n}, seed=${t.seed}, taps=${t.taps.join(',')}`;
-    let input, algo, actual;
-
-    if(t.kind === 'keystream'){
-      input = `${keyText}, panjang=${t.length} bit`;
-      algo = 'lfsrGenerate(seed, taps, panjang)';
-      actual = lfsrGenerate(seed, t.taps, t.length).bits.join('');
-    } else if(t.kind === 'encrypt'){
-      const p = textToBits(t.plaintext);
-      input = `${keyText}, plaintext="${t.plaintext}"`;
-      algo = 'plaintext XOR keystream, hasil ditulis dalam hex';
-      actual = bitsToHex(xorBits(p, lfsrGenerate(seed, t.taps, p.length).bits));
-    } else {
-      const c = hexToBits(t.ciphertext);
-      input = `${keyText}, ciphertext=${t.ciphertext}`;
-      algo = 'ciphertext XOR keystream, hasil dibaca sebagai teks';
-      actual = bitsToText(xorBits(c, lfsrGenerate(seed, t.taps, c.length).bits));
-    }
-
-    const pass = actual === t.expected;
-    return `<article class="test">
-      <header><h3>${t.title}</h3><span class="status ${pass ? 'pass' : 'fail'}">${pass ? 'PASS' : 'FAIL'}</span></header>
-      <dl class="kv">
-        <dt>Input</dt><dd class="m">${input}</dd>
-        <dt>Algoritma</dt><dd>${algo}</dd>
-        <dt>Output kamu</dt><dd class="m">${actual}</dd>
-        <dt>Output diharapkan</dt><dd class="m">${t.expected}</dd>
-      </dl>
-    </article>`;
-  }).join('');
+function initTests(){
+  $('test-scenario').textContent = `n=${SC.n}, seed=${SC.seedStr}, taps=${SC.taps.join(',')}`;
+  renderRegister($('test-key-reg'), scSeed(), SC.taps);
+  $('test-list').innerHTML = CASES.map((c, i) => `<article class="tc" id="tc-${i}">
+    <div class="tc-top"><span class="tc-no">${String(i + 1).padStart(2, '0')}</span><span class="badge" id="tc-badge-${i}">BELUM</span></div>
+    <h3>${c.title}</h3>
+    <p class="desc">${c.desc}</p>
+    <div class="tiles">
+      <div class="tile"><div class="tl">Mode</div><div class="tv">${c.mode}</div></div>
+      <div class="tile"><div class="tl">Key</div><div class="tv">${SC.seedStr}</div><div class="ts">taps ${SC.taps.join(',')}</div></div>
+    </div>
+    <div class="tile"><div class="tl">${c.inLabel}</div><div class="tv">${esc(c.input)}</div></div>
+    <div class="tile exp"><div class="tl">Expected</div><div class="tv">${esc(c.expected)}</div></div>
+    <div class="tile act idle" id="tc-act-${i}"><div class="tl">Actual</div><div class="tv" id="tc-actv-${i}">Belum dijalankan</div></div>
+    <div class="tile proc" id="tc-proc-${i}" hidden></div>
+    <button data-case="${i}">Run Test</button>
+  </article>`).join('');
+  updateSummary();
 }
-$('run-tests').addEventListener('click', runTests);
+
+function runCase(i){
+  const r = CASES[i].run();
+  const pass = r.actual === CASES[i].expected;
+  caseState[i] = pass;
+  $('tc-badge-' + i).textContent = pass ? 'PASS' : 'FAIL';
+  $('tc-badge-' + i).className = 'badge ' + (pass ? 'pass' : 'fail');
+  $('tc-act-' + i).className = 'tile act ' + (pass ? 'pass' : 'fail');
+  $('tc-actv-' + i).textContent = r.actual;
+  const proc = $('tc-proc-' + i);
+  proc.innerHTML = `<div class="tl">Proses</div>` +
+    r.proc.map(([k, v]) => `<div class="pl">${esc(k)}</div><div class="tv">${esc(v)}</div>`).join('');
+  proc.hidden = false;
+  updateSummary();
+}
+
+function updateSummary(){
+  const done = caseState.filter(v => v !== null);
+  const sum = $('test-summary');
+  if(done.length === 0){ sum.className = 'summary'; sum.textContent = ''; return; }
+  const ok = done.filter(Boolean).length;
+  const all = done.length === CASES.length;
+  sum.className = 'summary ' + (ok === done.length ? 'ok' : 'bad');
+  sum.textContent = all
+    ? (ok === CASES.length ? `Semua ${CASES.length} test lolos.` : `${ok} dari ${CASES.length} test lolos. Cek yang FAIL.`)
+    : `${ok} dari ${done.length} test yang sudah dijalankan lolos. ${CASES.length - done.length} belum dijalankan.`;
+}
+
+$('test-list').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-case]');
+  if(btn) runCase(Number(btn.dataset.case));
+});
+$('run-tests').addEventListener('click', () => CASES.forEach((_, i) => runCase(i)));
+$('reset-tests').addEventListener('click', () => { caseState.fill(null); initTests(); });
 
 // ---------- keamanan: pencarian seed ----------
 function decryptInfo(found, key){
@@ -769,7 +881,7 @@ $('atk-run').addEventListener('click', () => {
 // ---------- awal ----------
 refreshKeyPreview();
 walkReset();
-runTests();
+initTests();
 </script>
 </body>
 </html>
